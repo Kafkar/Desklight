@@ -285,22 +285,21 @@ int CallbackRGBWW(String parameter, int value) {
 void setup() {
   WiFi.persistent(false);
   Serial.begin(115200);
-  Serial.println("wakeuplight Booting");
-  WiFi.mode(WIFI_STA);
 
-  wifiMulti.addAP("H369A6B77CF", "Spanning!");
+  std::string deviceName;
+  deviceName = SENSORNAME + std::string(" Booting...");
+  
+  Serial.println(deviceName.c_str());
+
+  WiFi.mode(WIFI_STA);
+  wifiMulti.addAP(STASSID0, STAPSK0);
   
   connectWifi();
 
-    Serial.print("WiFi connected: ");
-    Serial.print(WiFi.SSID());
-    Serial.print(" ");
-    Serial.println(WiFi.localIP());
-
-  // pinMode(D1, INPUT);
-  // attachInterrupt(digitalPinToInterrupt(D1), detectsButton1, RISING);
-  // pinMode(D2, INPUT);
-  // attachInterrupt(digitalPinToInterrupt(D2), detectsButton2, RISING);
+  Serial.print("WiFi connected: ");
+  Serial.print(WiFi.SSID());
+  Serial.print(" ");
+  Serial.println(WiFi.localIP());
 
   rgbwwLedControl.init();
   rgbwwLedControl.setCallback(CallbackRGBWW);
