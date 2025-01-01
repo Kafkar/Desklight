@@ -38,16 +38,6 @@ MqttIdentify mqttIdentify(SENSORNAME);
 RGBWWLedControl rgbwwLedControl(REDPIN, GREENPIN, BLUEPIN, WHITE1PIN, WHITE2PIN);
 //MqttLedstripControl mqttLedstripControl(espClient, SENSORNAME);
 
-// ICACHE_RAM_ATTR void detectsButton1() {
-//   Serial.println("button one pressed");
-//   //client.publish(SENSORNAME + "/ledControl", "{\"state\": \"ON\"}");
-// }
-
-// ICACHE_RAM_ATTR void detectsButton2() {
-//   Serial.println("button two pressed");
-//   //client.publish(SENSORNAME + "/ledControl", "{\"state\": \"OFF\"}");
-// }
-
 /******************************************************************************
  * WIFI
  * 
@@ -122,7 +112,21 @@ void OTA(){
   Serial.println(WiFi.localIP());
 }
 
+void publishGenericState() {
+    StaticJsonDocument<200> stateDoc;
+    
+    stateDoc["state"] = rgbwwLedControl.getLedStatus() ? "ON" : "OFF";
+    stateDoc["brightness"] = rgbwwLedControl.getBrightnessRGB();
+    
+    // JsonObject color = stateDoc.createNestedObject("color");
+    // color["r"] = rgbwwLedControl.getRed() / 4;
+    // color["g"] = rgbwwLedControl.getGreen() / 4;
+    // color["b"] = rgbwwLedControl.getBlue() / 4;
 
+    String output;
+    serializeJson(stateDoc, output);
+    pubSubClient.publish(SENSORNAME "/state", output.c_str());
+}
 
 
 void callback(char* topic, byte* payload, unsigned int length) {
@@ -131,96 +135,46 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.println("] ");
   //===========================================
   if (strcmp(topic,SENSORNAME "/Control")==0) {
-    Serial.println(SENSORNAME);
     StaticJsonDocument<200> jsonBuffer;
     char s[length];
     for (int i = 0; i < length; i++) {
-      Serial.print((char)payload[i]);
+      //Serial.print((char)payload[i]);
       s[i]=payload[i];
     }
-      DynamicJsonDocument doc(1024);
-      DeserializationError error = deserializeJson(doc, s);
-      if (error){
-        Serial.print(F("deserializeJson() failed with code "));
-        Serial.println(error.c_str());
-      } 
-      else {
-        if (doc.containsKey("action")) {
-          const char* action = doc["action"];        
-          Serial.printf("action found %s \n", action);
-
-          //====================================================
-          // setOperationalState
-          //====================================================
-          if(strcmp(action, "setOperationalState") == 0) {
-            Serial.println("Set the Operational State"); 
-            if (doc.containsKey("state")) {  
-              const char* operationalState  = doc["state"];       
-              Serial.printf("Value operational State = %s\n", operationalState);
-              if(strcmp(operationalState, "on") == 0) {
-                rgbwwLedControl.on();
-                pubSubClient.publish(SENSORNAME "/state", "{\"state\": \"ON\"}");
-              } else {
-                rgbwwLedControl.off();
-                pubSubClient.publish(SENSORNAME "/state", "{\"state\": \"OFF\"}");
-              }
-            }
-          }
-
-          //====================================================
-          // setBrightness
-          //====================================================
-          if(strcmp(action, "setBrightness") == 0) {
-            //Serial.println("Set the brightness"); 
-            if (doc.containsKey("brightness")) {  
-              int brightness  = doc["brightness"];       
-              //Serial.printf("Value Brightness = %d\n", brightness);
-              rgbwwLedControl.setBrightnessRGB(brightness);
-            }
-          }
-
-          //====================================================
-          // autoBrightness
-          //====================================================
-          if(strcmp(action, "autoBrightness") == 0) {
-            Serial.println("auto the brightness"); 
-            double step  = 100;
-            uint16 Brightness = 0;
-            if (doc.containsKey("Brightness")) {  
-              Brightness = doc["Brightness"];       
-            }
-            if (doc.containsKey("step")) {  
-              step = doc["step"];       
-            }            
-            if (doc.containsKey("step")) {  
-              step = doc["step"];       
-            }            
-            if (doc.containsKey("increase")) {  
-              bool increase  = doc["increase"];       
-              rgbwwLedControl.autoBrightnessRGB(increase, step, Brightness);
-            }
-          }
-
-          //====================================================
-          // setRGB
-          //====================================================          
-          if(strcmp(action, "setRGB") == 0) {
-            Serial.println("Set the RGB"); 
-
-            int red = ((int)doc["color"]["r"]) * 4;
-            int green = ((int)doc["color"]["g"]) * 4;
-            int blue = ((int)doc["color"]["b"]) * 4;
-
-            //int red  = doc["r"];
-            Serial.printf("Value Red = %d\n", red);
-            //int green  = doc["g"];
-            Serial.printf("Value Green = %d\n", green);
-            //int blue  = doc["b"];       
-            Serial.printf("Value Blue = %d\n", blue);
-            rgbwwLedControl.setRGB(red, green, blue);
-          }
+    Serial.print("Received JSON: ");
+    Serial.println(s);
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, s);
+    if (error){
+      Serial.print(F("deserializeJson() failed with code "));
+      Serial.println(error.c_str());
+    } 
+    else {
+      if (doc["state"].is<const char*>()) {
+        const char* state = doc["state"];
+        Serial.printf("Value state = %s\n", state);
+        if(strcmp(state, "ON") == 0) {
+          rgbwwLedControl.on();
+        } else {
+          rgbwwLedControl.off();
         }
       }
+      if (doc["brightness"].is<signed int>()) {
+        u_int8_t brightness = doc["brightness"];
+        Serial.printf("Value brightness = %d\n", brightness);
+        rgbwwLedControl.setBrightnessRGB(brightness);
+      }
+      if (doc["color"].is<JsonObjectConst>())  {
+        JsonObject color = doc["color"];
+        int color_r = color["r"];
+        int color_g = color["g"];
+        int color_b = color["b"];
+        Serial.printf("Value r=%d g=%d b=%d\n", color_r, color_g, color_b);
+        rgbwwLedControl.setRGB(color_r * 4, color_g * 4, color_b * 4);
+      }
+
+      publishGenericState();
+    }
   }
 }
 
@@ -230,13 +184,13 @@ void reconnect() {
   // Loop until we're reconnected
 
   while (!pubSubClient.connected()) {
-    //Serial.print("Attempting MQTT connection...");
+    Serial.print("Attempting MQTT connection...");
 
     // Attempt to connect
     if (pubSubClient.connect(SENSORNAME, mqtt_username, mqtt_password)) {
-     //Serial.println("connected");
+     Serial.println("connected");
 
-      //Serial.print(pubSubClient.publish("MQTTIdentify", SENSORNAME));
+     Serial.print(pubSubClient.publish("MQTTIdentify", SENSORNAME));
 
       mqttIdentify.init(&pubSubClient,&WiFi);
       mqttIdentify.report();
@@ -262,21 +216,34 @@ void reconnect() {
   }
 }
 
+void reportState() {
+  Serial.println("Report state");
+  if( rgbwwLedControl.getLedStatus() == true){
+    Serial.println(pubSubClient.publish(SENSORNAME "/state", "{\"state\": \"ON\"}"));
+  } 
+  else {
+    Serial.println(pubSubClient.publish(SENSORNAME "/state", "{\"state\": \"OFF\"}"));
+  }
+  
+}
+
 /******************************************************************************
  * 
  * Callback functions RGBWWLedControl
  * 
  *****************************************************************************/
 int CallbackRGBWW(String parameter, int value) {
-    Serial.println("\CallbackRGBWW: a=" + parameter + "/b=" + String(value));
+    Serial.println("\CallbackRGBWW: parameter=" + parameter + "/value=" + String(value));
 
     if (parameter == "state") {
       Serial.println("State change");
       if( value == 1){
-        pubSubClient.publish(SENSORNAME "/state", "{\"state\": \"ON\"}");
+        Serial.println("State ON");
+         Serial.println(pubSubClient.publish(SENSORNAME "/fiets", "{\"state\": \"ON\"}"));
       } 
       else {
-        pubSubClient.publish(SENSORNAME "/state", "{\"state\": \"OFF\"}");
+        Serial.println("State OFF");
+         Serial.println(pubSubClient.publish(SENSORNAME "/fiets", "{\"state\": \"OFF\"}"));
       }
     }
     return 32000;
@@ -294,26 +261,21 @@ void setup() {
   WiFi.mode(WIFI_STA);
   wifiMulti.addAP(STASSID0, STAPSK0);
   
-  connectWifi();
+  // connectWifi();
 
-  Serial.print("WiFi connected: ");
-  Serial.print(WiFi.SSID());
-  Serial.print(" ");
-  Serial.println(WiFi.localIP());
-
-  rgbwwLedControl.init();
-  rgbwwLedControl.setCallback(CallbackRGBWW);
-  rgbwwLedControl.off();
+  // Serial.print("WiFi connected: ");
+  // Serial.print(WiFi.SSID());
+  // Serial.print(" ");
+  // Serial.println(WiFi.localIP());
 
   pubSubClient.setServer(mqtt_serverName, 1883);
   pubSubClient.setCallback(callback);
+ 
+  rgbwwLedControl.init();
+  //rgbwwLedControl.setCallback(CallbackRGBWW);
 
-  // reconnect();
-  // ++value;
-  // snprintf (msg, 75, "online");
-  // Serial.print("Publish message: ");
-  // Serial.println(msg);
-  // pubSubClient.publish("home/bedroom/switch1/available", msg);
+// Doe we realy set the light here or do wee need to reload the latest settings
+  rgbwwLedControl.off();
 
   rgbwwLedControl.setBrightnessRGB(255);
   rgbwwLedControl.setRGB(1023,512,255);
@@ -323,13 +285,14 @@ void setup() {
 
 int reconnectCounter = 0;
 void loop() {
-
   connectWifi();
   ArduinoOTA.handle();
-  
   if (!pubSubClient.connected()) {
     reconnect();
+    reportState();
   }
+
+
   pubSubClient.loop();
   rgbwwLedControl.loop();
   mqttIdentify.loop();  
